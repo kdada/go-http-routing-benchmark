@@ -172,6 +172,7 @@ var staticRoutes = []route{
 var (
 	staticHttpServeMux http.Handler
 
+	staticNirvana     http.Handler
 	staticAce         http.Handler
 	staticBear        http.Handler
 	staticBeego       http.Handler
@@ -214,6 +215,9 @@ func init() {
 		staticHttpServeMux = serveMux
 	})
 
+	calcMem("Nirvana", func() {
+		staticNirvana = loadNirvana(staticRoutes)
+	})
 	calcMem("Ace", func() {
 		staticAce = loadAce(staticRoutes)
 	})
@@ -307,6 +311,9 @@ func init() {
 
 // All routes
 
+func BenchmarkNirvana_StaticAll(b *testing.B) {
+	benchRoutes(b, staticNirvana, staticRoutes)
+}
 func BenchmarkAce_StaticAll(b *testing.B) {
 	benchRoutes(b, staticAce, staticRoutes)
 }

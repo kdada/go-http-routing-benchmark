@@ -56,6 +56,7 @@ var parseAPI = []route{
 }
 
 var (
+	parseNirvana     http.Handler
 	parseAce         http.Handler
 	parseBear        http.Handler
 	parseBeego       http.Handler
@@ -90,6 +91,9 @@ var (
 func init() {
 	println("#ParseAPI Routes:", len(parseAPI))
 
+	calcMem("Nirvana", func() {
+		parseNirvana = loadNirvana(parseAPI)
+	})
 	calcMem("Ace", func() {
 		parseAce = loadAce(parseAPI)
 	})
@@ -182,6 +186,10 @@ func init() {
 }
 
 // Static
+func BenchmarkNirvana_ParseStatic(b *testing.B) {
+	req, _ := http.NewRequest("GET", "/1/users", nil)
+	benchRequest(b, parseNirvana, req)
+}
 func BenchmarkAce_ParseStatic(b *testing.B) {
 	req, _ := http.NewRequest("GET", "/1/users", nil)
 	benchRequest(b, parseAce, req)
@@ -301,6 +309,10 @@ func BenchmarkVulcan_ParseStatic(b *testing.B) {
 // }
 
 // One Param
+func BenchmarkNirvana_ParseParam(b *testing.B) {
+	req, _ := http.NewRequest("GET", "/1/classes/go", nil)
+	benchRequest(b, parseNirvana, req)
+}
 func BenchmarkAce_ParseParam(b *testing.B) {
 	req, _ := http.NewRequest("GET", "/1/classes/go", nil)
 	benchRequest(b, parseAce, req)
@@ -420,6 +432,10 @@ func BenchmarkVulcan_ParseParam(b *testing.B) {
 // }
 
 // Two Params
+func BenchmarkNirvana_Parse2Params(b *testing.B) {
+	req, _ := http.NewRequest("GET", "/1/classes/go/123456789", nil)
+	benchRequest(b, parseNirvana, req)
+}
 func BenchmarkAce_Parse2Params(b *testing.B) {
 	req, _ := http.NewRequest("GET", "/1/classes/go/123456789", nil)
 	benchRequest(b, parseAce, req)
@@ -539,6 +555,9 @@ func BenchmarkVulcan_Parse2Params(b *testing.B) {
 // }
 
 // All Routes
+func BenchmarkNirvana_ParseAll(b *testing.B) {
+	benchRoutes(b, parseNirvana, parseAPI)
+}
 func BenchmarkAce_ParseAll(b *testing.B) {
 	benchRoutes(b, parseAce, parseAPI)
 }

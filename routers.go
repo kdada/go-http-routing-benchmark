@@ -5,6 +5,7 @@
 package main
 
 import (
+	rcontext "context"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,8 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"sync"
+	"time"
 
 	// If you add new routers please:
 	// - Keep the benchmark functions etc. alphabetically sorted
@@ -21,6 +24,7 @@ import (
 	"github.com/astaxie/beego"
 	"github.com/astaxie/beego/context"
 	"github.com/bmizerany/pat"
+	"github.com/caicloud/nirvana/router"
 	"github.com/go-playground/lars"
 	// "github.com/daryl/zeus"
 	"github.com/dimfeld/httptreemux"
@@ -345,7 +349,7 @@ func echoHandlerTest(c echo.Context) error {
 
 func loadEcho(routes []route) http.Handler {
 	var h echo.HandlerFunc = echoHandler
-	if loadTestHandler { 
+	if loadTestHandler {
 		h = echoHandlerTest
 	}
 
@@ -1437,6 +1441,166 @@ func loadVulcanSingle(method, path string, handler http.HandlerFunc) http.Handle
 		panic(err)
 	}
 	return mux
+}
+
+type nirvanaExecutorSingleWrite struct {
+	Method string
+}
+
+func (e *nirvanaExecutorSingleWrite) Inspect(ctx rcontext.Context) (router.Executor, bool) {
+	nc := ctx.(*nirvanaContext)
+	if nc.req.Method != e.Method {
+		return nil, false
+	}
+	return e, true
+}
+
+func (e *nirvanaExecutorSingleWrite) Execute(ctx rcontext.Context) error {
+	nc := ctx.(*nirvanaContext)
+	name, _ := nc.Get("name")
+	io.WriteString(nc.resp, name)
+	return nil
+}
+
+type nirvanaExecutorSingle struct {
+	Method string
+}
+
+func (e *nirvanaExecutorSingle) Inspect(ctx rcontext.Context) (router.Executor, bool) {
+	nc := ctx.(*nirvanaContext)
+	if nc.req.Method != e.Method {
+		return nil, false
+	}
+	return e, true
+}
+
+func (e *nirvanaExecutorSingle) Execute(ctx rcontext.Context) error {
+	return nil
+}
+
+type nirvanaExecutor struct {
+	Method string
+}
+
+func (e *nirvanaExecutor) Inspect(ctx rcontext.Context) (router.Executor, bool) {
+	nc := ctx.(*nirvanaContext)
+	if nc.req.Method != e.Method {
+		return nil, false
+	}
+	return e, true
+}
+
+func (e *nirvanaExecutor) Execute(ctx rcontext.Context) error {
+	nc := ctx.(*nirvanaContext)
+	io.WriteString(nc.resp, nc.req.RequestURI)
+	return nil
+}
+
+type nirvanaParam struct {
+	key   string
+	value string
+}
+
+type nirvanaContext struct {
+	resp http.ResponseWriter
+	req  *http.Request
+	data []nirvanaParam
+}
+
+func (*nirvanaContext) Deadline() (deadline time.Time, ok bool) {
+	return
+}
+
+func (*nirvanaContext) Done() <-chan struct{} {
+	return nil
+}
+
+func (*nirvanaContext) Err() error {
+	return nil
+}
+
+func (*nirvanaContext) Value(key interface{}) interface{} {
+	return nil
+}
+
+func (nc *nirvanaContext) Set(key, value string) {
+	nc.data = append(nc.data, nirvanaParam{key, value})
+}
+
+func (nc *nirvanaContext) Get(key string) (string, bool) {
+	for _, p := range nc.data {
+		if p.key == key {
+			return p.value, true
+		}
+	}
+	return "", false
+}
+
+type nirvanaHandler struct {
+	root router.Router
+	pool sync.Pool
+}
+
+func newNirvanaHandler(root router.Router) *nirvanaHandler {
+	nh := &nirvanaHandler{
+		root: root,
+	}
+	nh.pool.New = func() interface{} {
+		return &nirvanaContext{
+			data: make([]nirvanaParam, 0, 20),
+		}
+	}
+	return nh
+}
+
+func (h *nirvanaHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	ctx := h.pool.Get().(*nirvanaContext)
+	ctx.req = req
+	ctx.resp = resp
+	ctx.data = ctx.data[:0]
+	e := h.root.Match(ctx, ctx, req.URL.Path)
+	if e != nil {
+		err := e.Execute(ctx)
+		if err != nil {
+			panic(fmt.Sprintf("invalid executor: %s", err.Error()))
+		}
+	}
+	h.pool.Put(ctx)
+}
+
+func loadNirvana(routes []route) http.Handler {
+	re := regexp.MustCompile(":([^/]*)")
+	var root router.Router
+	for _, r := range routes {
+		path := re.ReplaceAllString(r.path, "{$1}")
+		// fmt.Printf("nirvana: %s\n", path)
+		router, leaf, err := router.Parse(path)
+		if err != nil {
+			panic("can't create router")
+		}
+		leaf.AddExecutor(&nirvanaExecutor{r.method})
+		if root == nil {
+			root = router
+		} else {
+			root.Merge(router)
+		}
+	}
+	// data, _ := json.Marshal(root)
+	// fmt.Printf("%s", data)
+	return newNirvanaHandler(root)
+}
+
+func loadNirvanaSingle(method, path string, e router.Executor) http.Handler {
+	re := regexp.MustCompile(":([^/]*)")
+	path = re.ReplaceAllString(path, "{$1}")
+	router, leaf, err := router.Parse(path)
+	if err != nil {
+		panic("can't create router")
+	}
+	leaf.AddExecutor(e)
+	// data, _ := json.Marshal(router)
+	// fmt.Printf("%s\n", data)
+	return newNirvanaHandler(router)
 }
 
 // Zeus

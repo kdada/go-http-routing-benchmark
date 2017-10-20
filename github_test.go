@@ -274,6 +274,7 @@ var githubAPI = []route{
 }
 
 var (
+	githubNirvana     http.Handler
 	githubAce         http.Handler
 	githubBear        http.Handler
 	githubBeego       http.Handler
@@ -308,6 +309,9 @@ var (
 func init() {
 	println("#GithubAPI Routes:", len(githubAPI))
 
+	calcMem("Nirvana", func() {
+		githubNirvana = loadNirvana(githubAPI)
+	})
 	calcMem("Ace", func() {
 		githubAce = loadAce(githubAPI)
 	})
@@ -400,6 +404,10 @@ func init() {
 }
 
 // Static
+func BenchmarkNirvana_GithubStatic(b *testing.B) {
+	req, _ := http.NewRequest("GET", "/user/repos", nil)
+	benchRequest(b, githubNirvana, req)
+}
 func BenchmarkAce_GithubStatic(b *testing.B) {
 	req, _ := http.NewRequest("GET", "/user/repos", nil)
 	benchRequest(b, githubAce, req)
@@ -519,6 +527,10 @@ func BenchmarkVulcan_GithubStatic(b *testing.B) {
 // }
 
 // Param
+func BenchmarkNirvana_GithubParam(b *testing.B) {
+	req, _ := http.NewRequest("GET", "/repos/julienschmidt/httprouter/stargazers", nil)
+	benchRequest(b, githubNirvana, req)
+}
 func BenchmarkAce_GithubParam(b *testing.B) {
 	req, _ := http.NewRequest("GET", "/repos/julienschmidt/httprouter/stargazers", nil)
 	benchRequest(b, githubAce, req)
@@ -638,6 +650,9 @@ func BenchmarkVulcan_GithubParam(b *testing.B) {
 // }
 
 // All routes
+func BenchmarkNirvana_GithubAll(b *testing.B) {
+	benchRoutes(b, githubNirvana, githubAPI)
+}
 func BenchmarkAce_GithubAll(b *testing.B) {
 	benchRoutes(b, githubAce, githubAPI)
 }
